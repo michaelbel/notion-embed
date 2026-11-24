@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Bubble Sort</title>
+<style>
+:root{color-scheme:light dark;--bg:#fff;--fg:#37352f;--muted:#787774;--line:#e6e5e3;--button:#f7f7f5;--bar:#64748b;--active:#d97706;--sorted:#21865a}
+@media(prefers-color-scheme:dark){:root{--bg:#191919;--fg:#ededed;--muted:#a3a3a3;--line:#363636;--button:#252525;--bar:#64748b;--active:#b45309;--sorted:#21865a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:760px;margin:auto;padding:14px clamp(10px,3vw,28px) 18px}
+.stage{position:relative;height:clamp(155px,30vw,230px);margin:0 auto 12px;max-width:580px;border-bottom:1px solid var(--line);isolation:isolate}
+.bar{position:absolute;bottom:0;width:14%;display:flex;align-items:flex-end;justify-content:center;padding-bottom:9px;border-radius:8px 8px 3px 3px;background:var(--bar);color:white;font-size:clamp(17px,4vw,26px);font-weight:650;font-variant-numeric:tabular-nums;transition:left var(--motion,560ms) cubic-bezier(.25,.8,.25,1),background-color 180ms ease,transform var(--motion,560ms) ease;left:0}
+.bar.active{background:var(--active);z-index:2}.bar.sorted{background:var(--sorted)}
+.bar.lift{transform:translateY(-12px);z-index:3}.instant .bar{transition:none!important}
+.meta,.controls,.speed,.legend{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.meta{justify-content:space-between;min-height:28px}.meta output{font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}.status{font-weight:500}
+input[type=range]{accent-color:var(--sorted);cursor:pointer;min-width:0}#progress{display:block;width:100%;margin:9px 0 14px}
+.controls{justify-content:center}button{border:1px solid var(--line);background:var(--button);color:var(--fg);border-radius:7px;min-height:36px;padding:6px 12px;font:inherit;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px}button:hover:not(:disabled){filter:brightness(.94)}button:disabled{opacity:.4;cursor:default}button:focus-visible,input:focus-visible{outline:2px solid #21865a;outline-offset:2px}button.primary{background:#21865a;color:white;border-color:#21865a;min-width:118px}button svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.speed{justify-content:center;margin-top:12px;color:var(--muted);font-size:12px}.speed input{width:115px}.speed output{min-width:36px;font-variant-numeric:tabular-nums}
+.legend{justify-content:center;margin-top:12px;color:var(--muted);font-size:11px;gap:12px}.dot{display:inline-block;width:8px;height:8px;border-radius:3px;margin-right:4px}
+@media(prefers-reduced-motion:reduce){.bar{transition:none!important}}
+</style>
+</head>
+<body>
+<main aria-label="Интерактивная пузырьковая сортировка">
+<div class="stage" id="stage" role="img" aria-label="Массив чисел"></div>
+<div class="meta"><span class="status" id="status" aria-live="polite"></span><output id="counter"></output></div>
+<input id="progress" type="range" min="0" value="0" step="1" aria-label="Шаг сортировки">
+<div class="controls">
+<button id="reset" title="Сначала" aria-label="Сначала"><svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 1 3 6.7M3 4v8h8"/></svg></button>
+<button id="prev" title="Предыдущий шаг" aria-label="Предыдущий шаг"><svg viewBox="0 0 24 24"><path d="M19 12H5m7-7-7 7 7 7"/></svg></button>
+<button class="primary" id="play">▶ Старт</button>
+<button id="next" title="Следующий шаг" aria-label="Следующий шаг"><svg viewBox="0 0 24 24"><path d="M5 12h14m-7-7 7 7-7 7"/></svg></button>
+<button id="shuffle" title="Перемешать" aria-label="Перемешать"><svg viewBox="0 0 24 24"><path d="M3 6h3c5 0 7 12 12 12h3m-4-4 4 4-4 4M3 18h3c2 0 4-2 5-5m2-3c2-3 3-4 5-4h3m-4-4 4 4-4 4"/></svg></button>
+</div>
+<div class="speed"><label for="speed">Скорость</label><input id="speed" type="range" min="0.5" max="2" step="0.25" value="1"><output id="speedValue">1×</output></div>
+<div class="legend"><span><i class="dot" style="background:var(--bar)"></i>Не отсортировано</span><span><i class="dot" style="background:var(--active)"></i>Сравнение</span><span><i class="dot" style="background:var(--sorted)"></i>Отсортировано</span></div>
+</main>
+<script>
+"use strict";
+const $=id=>document.getElementById(id);
+const stage=$("stage"),progress=$("progress"),speed=$("speed");
+let initial=[5,2,4,1,3],frames=[],step=0,timer=null,playing=false,bars=new Map();
+function build(values){
+ const a=values.slice(),out=[];
+ const add=(kind,message,active=[],sorted=0)=>out.push({a:a.slice(),kind,message,active:active.slice(),sorted});
+ add("start","Исходный массив");
+ for(let end=a.length-1;end>0;end--){
+  let changed=false;
+  for(let j=0;j<end;j++){
+   const x=a[j],y=a[j+1],pair=[x,y];
+   add("compare",x+" и "+y+" — сравнение",pair,a.length-1-end);
+   if(x>y){
+    [a[j],a[j+1]]=[y,x];changed=true;
+    add("swap",x+" > "+y+" — обмен",pair,a.length-1-end);
+   }else add("keep",x+" ≤ "+y+" — без обмена",pair,a.length-1-end);
+  }
+  if(!changed){add("done","Массив отсортирован",[],a.length);return out;}
+  add("pass",a[end]+" на своём месте",[],a.length-end);
+ }
+ add("done","Массив отсортирован",[],a.length);
+ return out;
+}
+function motion(){stage.style.setProperty("--motion",Math.min(800,560/Number(speed.value))+"ms");$("speedValue").value=Number(speed.value)+"×";}
+function render(instant=false){
+ const f=frames[step];
+ if(instant)stage.classList.add("instant");
+ f.a.forEach((v,i)=>{
+  const b=bars.get(v);
+  b.style.left=(6+i*19)+"%";
+  b.style.height=(18+v/Math.max(...initial)*70)+"%";
+  const active=f.active.includes(v);
+  b.className="bar"+(i>=f.a.length-f.sorted?" sorted":active?" active":"")+(f.kind==="swap"&&active&&v===Math.min(...f.active)?" lift":"");
+ });
+ if(instant){void stage.offsetWidth;stage.classList.remove("instant");}
+ stage.setAttribute("aria-label",f.a.join(", "));
+ $("status").textContent=f.message;
+ $("counter").value=step+" / "+(frames.length-1);
+ progress.value=step;
+ $("prev").disabled=step===0;
+ $("next").disabled=step===frames.length-1;
+ $("play").textContent=playing?"Ⅱ Пауза":step===frames.length-1?"↻ Повтор":"▶ Старт";
+}
+function stop(){playing=false;clearTimeout(timer);timer=null;}
+function schedule(){
+ clearTimeout(timer);
+ if(!playing)return;
+ timer=setTimeout(()=>{
+  if(!playing)return;
+  step++;
+  if(step>=frames.length-1){step=frames.length-1;stop();}
+  render();
+  schedule();
+ },(frames[step].kind==="swap"?1250:1050)/Number(speed.value));
+}
+function seek(n,instant=false){stop();step=Math.max(0,Math.min(n,frames.length-1));render(instant);}
+function init(){
+ stop();frames=build(initial);step=0;bars=new Map();stage.replaceChildren();
+ initial.forEach(v=>{const b=document.createElement("div");b.className="bar";b.textContent=v;b.setAttribute("aria-hidden","true");stage.append(b);bars.set(v,b);});
+ progress.max=frames.length-1;motion();render(true);
+}
+$("reset").onclick=()=>seek(0,true);
+$("prev").onclick=()=>seek(step-1);
+$("next").onclick=()=>seek(step+1);
+$("play").onclick=()=>{
+ if(playing){stop();render();return;}
+ if(step===frames.length-1){step=0;render(true);}
+ playing=true;render();schedule();
+};
+$("shuffle").onclick=()=>{
+ const a=initial.slice();
+ do{for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]];}}while(a.every((v,i)=>v===initial[i]));
+ initial=a;init();
+};
+progress.oninput=()=>seek(Number(progress.value),true);
+speed.oninput=()=>{motion();if(playing)schedule();};
+document.addEventListener("visibilitychange",()=>{if(document.hidden&&playing){stop();render();}});
+init();
+</script>
+</body>
+</html>
